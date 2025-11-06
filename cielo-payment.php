@@ -48,6 +48,7 @@ function cielo_ecommerce_init() {
             $this->testmode = 'yes' === $this->get_option('testmode');
             $this->merchant_id = $this->testmode ? $this->get_option('test_merchant_id') : $this->get_option('merchant_id');
             $this->merchant_key = $this->testmode ? $this->get_option('test_merchant_key') : $this->get_option('merchant_key');
+            $this->establishment_code = $this->get_option('establishment_code');
             
             add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
             add_action('wp_enqueue_scripts', array($this, 'payment_scripts'));
@@ -104,6 +105,13 @@ function cielo_ecommerce_init() {
                     'type' => 'password',
                     'description' => __('Sua Merchant Key da Cielo para ambiente de teste/sandbox.', 'cielo-ecommerce'),
                     'default' => '',
+                ),
+                'establishment_code' => array(
+                    'title' => __('Código do Estabelecimento', 'cielo-ecommerce'),
+                    'type' => 'text',
+                    'description' => __('Código do estabelecimento comercial (EC) fornecido pela Cielo. Este código identifica sua loja na rede Cielo.', 'cielo-ecommerce'),
+                    'default' => '',
+                    'desc_tip' => true,
                 ),
             );
         }
@@ -238,6 +246,14 @@ function cielo_ecommerce_init() {
                     )
                 )
             );
+            
+            // Adiciona código do estabelecimento se configurado
+            if (!empty($this->establishment_code)) {
+                $body['Payment']['Provider'] = 'Cielo';
+                $body['Payment']['Credentials'] = array(
+                    'Code' => $this->establishment_code
+                );
+            }
             
             $response = wp_remote_post($api_url, array(
                 'method' => 'POST',
