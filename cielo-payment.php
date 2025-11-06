@@ -45,6 +45,7 @@ function cielo_ecommerce_init() {
             $this->title = $this->get_option('title');
             $this->description = $this->get_option('description');
             $this->enabled = $this->get_option('enabled');
+            $this->enable_debug = 'yes' === $this->get_option('enable_debug');
             $this->testmode = 'yes' === $this->get_option('testmode');
             $this->merchant_id = $this->testmode ? $this->get_option('test_merchant_id') : $this->get_option('merchant_id');
             $this->merchant_key = $this->testmode ? $this->get_option('test_merchant_key') : $this->get_option('merchant_key');
@@ -52,6 +53,8 @@ function cielo_ecommerce_init() {
             
             add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
             add_action('wp_enqueue_scripts', array($this, 'payment_scripts'));
+
+            $this->cielo_log('Cielo eCommerce 3.0 Gateway iniciado com sucesso.');
         }
         
         public function init_form_fields() {
@@ -112,6 +115,12 @@ function cielo_ecommerce_init() {
                     'description' => __('Código do estabelecimento comercial (EC) fornecido pela Cielo. Este código identifica sua loja na rede Cielo.', 'cielo-ecommerce'),
                     'default' => '',
                     'desc_tip' => true,
+                ),
+                'debug' => array(
+                    'title' => __('Ativar Debug', 'cielo-ecommerce'),
+                    'type' => 'checkbox',
+                    'description' => __('Ativa logs de debug', 'cielo-ecommerce'),
+                    'default' => 'no',
                 ),
             );
         }
@@ -236,6 +245,7 @@ function cielo_ecommerce_init() {
                     'Type' => 'CreditCard',
                     'Amount' => intval($order->get_total() * 100),
                     'Installments' => $installments,
+                    'Capture' => true,
                     'SoftDescriptor' => substr(get_bloginfo('name'), 0, 13),
                     'CreditCard' => array(
                         'CardNumber' => $card_number,
@@ -267,12 +277,21 @@ function cielo_ecommerce_init() {
             ));
             
             if (is_wp_error($response)) {
-                wc_add_notice(__('Erro de conexão com a Cielo. Tente novamente.', 'cielo-ecommerce'), 'error');
+                // Falha de comunicação: log + nota no pedido + retornar erro ao checkout
+                $this->cielo_log( 'Erro de comunicação com Cielo: ' . $response->get_error_message() );
+                $order->add_order_note( 'Erro ao processar pagamento (Cielo): ' . $response->get_error_message() );
+                wc_add_notice( 'Erro ao processar pagamento. Tente novamente ou entre em contato.', 'error' );
                 return;
             }
             
+            $code = wp_remote_retrieve_response_code( $response );
+
             $response_body = json_decode(wp_remote_retrieve_body($response), true);
             
+            if ( $this->enable_debug ) {
+                $this->cielo_log( "Resposta Cielo HTTP {$code} : " . $response_body, 'info' );
+            }
+
             if (isset($response_body['Payment']['Status'])) {
                 $status = $response_body['Payment']['Status'];
                 $payment_id = $response_body['Payment']['PaymentId'];
@@ -295,6 +314,7 @@ function cielo_ecommerce_init() {
                 } else {
                     $error_message = $this->get_status_message($status);
                     $order->update_status('failed', $error_message);
+                    $this->cielo_log($error_message,);
                     wc_add_notice($error_message, 'error');
                 }
             } else {
@@ -342,6 +362,18 @@ function cielo_ecommerce_init() {
             );
             
             return isset($messages[$status]) ? $messages[$status] : __('Status desconhecido', 'cielo-ecommerce');
+        }
+
+        private function cielo_log( $message, $level = 'error' ) {
+            if ( ! function_exists( 'wc_get_logger' ) ) return;
+            $logger = wc_get_logger();
+            $context = array( 'source' => 'cielo-ecommerce' ); // gerará log com prefixo "cielo-ecommerce-YYYY-MM-DD.log"
+            // shortcut methods
+            if ( method_exists( $logger, $level ) ) {
+                $logger->{$level}( $message, $context );
+            } else {
+                $logger->log( $level, $message, $context );
+            }
         }
     }
 }
