@@ -3,7 +3,7 @@
  * Plugin Name: Cielo eCommerce 3.0 Gateway
  * Plugin URI: https://exemplo.com
  * Description: Gateway de pagamento com cartão de crédito integrado à API Cielo eCommerce 3.0
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Seu Nome
  * Author URI: https://exemplo.com
  * Text Domain: cielo-ecommerce
